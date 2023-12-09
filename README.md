@@ -45,7 +45,7 @@ python3 -m pip install --upgrade build
 
 python3 -m build
 
-python3 -m pip install dist/scrapy-scraper-1.1-py3-none-any.whl
+python3 -m pip install dist/scrapy-scraper-1.3-py3-none-any.whl
 
 playwright install chromium
 ```
@@ -55,19 +55,19 @@ playwright install chromium
 Restricted (auto throttling and domain whitelisting is on):
 
 ```fundamental
-scrapy-scraper -u https://example.com/home -o results.txt -a random -d js
+scrapy-scraper -u https://example.com/home -o results.txt -a random -d js -l yes
 ```
 
 Unrestricted (auto throttling and domain whitelisting is off):
 
 ```fundamental
-scrapy-scraper -u https://example.com/home -o results.txt -a random -d js -at off -w off
+scrapy-scraper -u https://example.com/home -o results.txt -a random -d js -at off -w off -l yes
 ```
 
 ## Usage
 
 ```fundamental
-Scrapy Scraper v1.1 ( github.com/ivan-sincek/scrapy-scraper )
+Scrapy Scraper v1.3 ( github.com/ivan-sincek/scrapy-scraper )
 
 Usage:   scrapy-scraper -u urls                     -o out         [-d directory]
 Example: scrapy-scraper -u https://example.com/home -o results.txt [-d downloads]
@@ -78,10 +78,13 @@ URLS
     File with URLs or a single URL to start crawling and scraping from
     -u <urls> - urls.txt | https://example.com/home | etc.
 WHITELIST
-    File with whitelisted domains to limit the scope
+    File with whitelisted domains to limit the crawling scope
     Specify 'off' to disable domain whitelisting
     Default: domains extracted from URLs
     -w <whitelist> - whitelist.txt | off | etc.
+LINKS
+    Include all [3rd party] links and sources in the output file
+    -l <links> - yes
 PLAYWRIGHT
     Use Playwright's headless browser
     -p <playwright> - yes
@@ -107,8 +110,8 @@ RECURSION
     -r <recursion> - 0 | 2 | 4 | etc.
 AGENT
     User agent to use
-    Default: Scrapy Scraper/1.1
-    -a <agent> - curl/3.30.1 | etc.
+    Default: Scrapy Scraper/1.3
+    -a <agent> - curl/3.30.1 | random | etc.
 PROXY
     Web proxy to use
     -x <proxy> - http://127.0.0.1:8080 | etc.

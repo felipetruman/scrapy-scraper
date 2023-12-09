@@ -39,7 +39,7 @@ def write_array(data, out):
 		except FileNotFoundError:
 			print(("Cannot save results to '{0}'").format(out))
 
-default_user_agent = "Scrapy Scraper/1.1"
+default_user_agent = "Scrapy Scraper/1.3"
 
 def get_random_user_agent():
 	array = []
@@ -61,6 +61,7 @@ class ScrapyScraperSpider(scrapy.Spider):
 		self,
 		urls,
 		whitelist,
+		links,
 		playwright,
 		agent,
 		proxy,
@@ -70,6 +71,7 @@ class ScrapyScraperSpider(scrapy.Spider):
 		self.name                  = "ScrapyScraperSpider"
 		self.start_urls            = urls
 		self.allowed_domains       = whitelist
+		self.__links               = links
 		self.__playwright          = playwright
 		self.__agent               = agent
 		self.__proxy               = proxy
@@ -84,7 +86,8 @@ class ScrapyScraperSpider(scrapy.Spider):
 		self.__dont_filter         = False # send duplicate requests
 		self.__context             = 0
 		# --------------------------------
-		self.__results             = []
+		self.__crawled             = []
+		self.__collected           = []
 
 	def start_requests(self):
 		self.__print_start_urls()
@@ -102,10 +105,12 @@ class ScrapyScraperSpider(scrapy.Spider):
 			)
 
 	def closed(self, reason):
-		self.__results = unique(self.__results)
-		self.__print_info(("Total unique URLs crawled: {0}").format(len(self.__results)))
-		if self.__results:
-			write_array(sorted(self.__results, key = str.casefold), self.__out)
+		self.__crawled = unique(self.__crawled)
+		self.__print_info(("Total unique URLs crawled: {0}").format(len(self.__crawled)))
+		self.__collected = unique(self.__collected)
+		self.__print_info(("Total unique URLs collected: {0}").format(len(self.__collected)))
+		if self.__collected:
+			write_array(sorted(self.__collected, key = str.casefold), self.__out)
 
 	def __print_start_urls(self):
 		termcolor.cprint("Normalized start URLs:", "green")
@@ -172,10 +177,14 @@ class ScrapyScraperSpider(scrapy.Spider):
 			page = response.meta["playwright_page"]
 			await page.close()
 			await page.context.close()
-		self.__results.append(response.url)
+		self.__crawled.append(response.url)
+		self.__collected.append(response.url)
 		self.__download_js(response)
 		print(response.url)
-		for link in self.__extract_links(response):
+		links = self.__extract_links(response)
+		if self.__links:
+			self.__collected.extend(links)
+		for link in links:
 			yield response.follow(
 				url         = link,
 				headers     = self.__get_headers(),
@@ -219,6 +228,7 @@ class ScrapyScraper:
 		self,
 		urls,
 		whitelist,
+		links,
 		playwright,
 		concurrent_requests,
 		concurrent_requests_domain,
@@ -231,6 +241,7 @@ class ScrapyScraper:
 	):
 		self.__urls                       = urls
 		self.__whitelist                  = whitelist
+		self.__links                      = links
 		self.__playwright                 = playwright
 		self.__concurrent_requests        = concurrent_requests
 		self.__concurrent_requests_domain = concurrent_requests_domain
@@ -293,7 +304,7 @@ class ScrapyScraper:
 			settings["PLAYWRIGHT_DEFAULT_NAVIGATION_TIMEOUT"] = self.__timeout * 1000
 		# --------------------------------
 		scrapy_scraper_spider = scrapy.crawler.CrawlerProcess(settings)
-		scrapy_scraper_spider.crawl(ScrapyScraperSpider, self.__urls, self.__whitelist, self.__playwright, self.__agent, self.__proxy, self.__directory, self.__out)
+		scrapy_scraper_spider.crawl(ScrapyScraperSpider, self.__urls, self.__whitelist, self.__links, self.__playwright, self.__agent, self.__proxy, self.__directory, self.__out)
 		scrapy_scraper_spider.start()
 
 # ----------------------------------------
@@ -307,6 +318,7 @@ class Validate:
 		self.__args    = {
 			"urls"                      : None,
 			"whitelist"                 : None,
+			"links"                     : None,
 			"playwright"                : None,
 			"concurrent_requests"       : None,
 			"concurrent_requests_domain": None,
@@ -320,7 +332,7 @@ class Validate:
 
 	def __basic(self):
 		self.__proceed = False
-		print("Scrapy Scraper v1.1 ( github.com/ivan-sincek/scrapy-scraper )")
+		print("Scrapy Scraper v1.3 ( github.com/ivan-sincek/scrapy-scraper )")
 		print("")
 		print("Usage:   scrapy-scraper -u urls                     -o out         [-d directory]")
 		print("Example: scrapy-scraper -u https://example.com/home -o results.txt [-d downloads]")
@@ -334,10 +346,13 @@ class Validate:
 		print("    File with URLs or a single URL to start crawling and scraping from")
 		print("    -u <urls> - urls.txt | https://example.com/home | etc.")
 		print("WHITELIST")
-		print("    File with whitelisted domains to limit the scope")
+		print("    File with whitelisted domains to limit the crawling scope")
 		print("    Specify 'off' to disable domain whitelisting")
 		print("    Default: domains extracted from URLs")
 		print("    -w <whitelist> - whitelist.txt | off | etc.")
+		print("LINKS")
+		print("    Include all [3rd party] links and sources in the output file")
+		print("    -l <links> - yes")
 		print("PLAYWRIGHT")
 		print("    Use Playwright's headless browser")
 		print("    -p <playwright> - yes")
@@ -364,7 +379,7 @@ class Validate:
 		print("AGENT")
 		print("    User agent to use")
 		print(("    Default: {0}").format(default_user_agent))
-		print("    -a <agent> - curl/3.30.1 | etc.")
+		print("    -a <agent> - curl/3.30.1 | random | etc.")
 		print("PROXY")
 		print("    Web proxy to use")
 		print("    -x <proxy> - http://127.0.0.1:8080 | etc.")
@@ -497,6 +512,11 @@ class Validate:
 					if not self.__args["whitelist"]:
 						self.__error("No valid whitelisted domains were found") # fail-safe
 			# --------------------
+			elif key == "-l" and self.__args["links"] is None:
+				self.__args["links"] = value.lower()
+				if self.__args["links"] != "yes":
+					self.__error("Specify 'yes' to include all links and sources in the output file")
+			# --------------------
 			elif key == "-p" and self.__args["playwright"] is None:
 				self.__args["playwright"] = value.lower()
 				if self.__args["playwright"] != "yes":
@@ -583,7 +603,7 @@ class Validate:
 			for i in range(1, argc, 2):
 				self.__validate(sys.argv[i], sys.argv[i + 1])
 			if None in [self.__args["urls"], self.__args["out"]] or not self.__check(argc):
-				self.__error("Missing a mandatory option (-u, -o) and/or optional (-w, -p, -cr, -crd, -at, -r, -a, -x, -d)", True)
+				self.__error("Missing a mandatory option (-u, -o) and/or optional (-w, -l, -p, -cr, -crd, -at, -r, -a, -x, -d)", True)
 		# --------------------
 		else:
 			self.__error("Incorrect usage", True)
@@ -617,7 +637,7 @@ def main():
 	if validate.run():
 		print("###########################################################################")
 		print("#                                                                         #")
-		print("#                           Scrapy Scraper v1.1                           #")
+		print("#                           Scrapy Scraper v1.3                           #")
 		print("#                                     by Ivan Sincek                      #")
 		print("#                                                                         #")
 		print("# Crawl and scrape websites.                                              #")
@@ -628,6 +648,7 @@ def main():
 		scrapy_scraper = ScrapyScraper(
 			validate.get_arg("urls"),
 			validate.get_arg("whitelist"),
+			validate.get_arg("links"),
 			validate.get_arg("playwright"),
 			validate.get_arg("concurrent_requests"),
 			validate.get_arg("concurrent_requests_domain"),
